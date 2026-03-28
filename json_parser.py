@@ -1,122 +1,63 @@
 #!/usr/bin/env python3
-"""json_parser — Recursive descent JSON parser from scratch (no json module). Zero deps."""
-
-class JSONParser:
-    def __init__(self, text):
-        self.text = text
-        self.pos = 0
-
-    def parse(self):
-        self._skip()
-        result = self._value()
-        self._skip()
-        if self.pos < len(self.text):
-            raise ValueError(f"Unexpected char at {self.pos}: {self.text[self.pos]}")
-        return result
-
-    def _skip(self):
-        while self.pos < len(self.text) and self.text[self.pos] in ' \t\n\r':
-            self.pos += 1
-
-    def _char(self):
-        return self.text[self.pos] if self.pos < len(self.text) else None
-
-    def _eat(self, expected):
-        if self._char() != expected:
-            raise ValueError(f"Expected '{expected}' at {self.pos}, got '{self._char()}'")
-        self.pos += 1
-
-    def _value(self):
-        self._skip()
-        ch = self._char()
-        if ch == '"': return self._string()
-        if ch == '{': return self._object()
-        if ch == '[': return self._array()
-        if ch == 't': self._match("true"); return True
-        if ch == 'f': self._match("false"); return False
-        if ch == 'n': self._match("null"); return None
-        if ch in '-0123456789': return self._number()
-        raise ValueError(f"Unexpected '{ch}' at {self.pos}")
-
-    def _match(self, word):
-        for c in word:
-            self._eat(c)
-
-    def _string(self):
-        self._eat('"')
-        chars = []
-        esc = {'n':'\n','t':'\t','r':'\r','\\':'\\','"':'"','/':'/','b':'\b','f':'\f'}
-        while self._char() != '"':
-            if self._char() == '\\':
-                self.pos += 1
-                ch = self._char()
-                if ch == 'u':
-                    self.pos += 1
-                    code = self.text[self.pos:self.pos+4]
-                    chars.append(chr(int(code, 16)))
-                    self.pos += 4
-                    continue
-                chars.append(esc.get(ch, ch))
-            else:
-                chars.append(self._char())
-            self.pos += 1
-        self._eat('"')
-        return ''.join(chars)
-
-    def _number(self):
-        start = self.pos
-        if self._char() == '-': self.pos += 1
-        while self._char() and self._char().isdigit(): self.pos += 1
-        is_float = False
-        if self._char() == '.':
-            is_float = True; self.pos += 1
-            while self._char() and self._char().isdigit(): self.pos += 1
-        if self._char() in 'eE':
-            is_float = True; self.pos += 1
-            if self._char() in '+-': self.pos += 1
-            while self._char() and self._char().isdigit(): self.pos += 1
-        s = self.text[start:self.pos]
-        return float(s) if is_float else int(s)
-
-    def _array(self):
-        self._eat('['); self._skip()
-        arr = []
-        if self._char() != ']':
-            arr.append(self._value())
-            self._skip()
-            while self._char() == ',':
-                self.pos += 1
-                arr.append(self._value())
-                self._skip()
-        self._eat(']')
-        return arr
-
-    def _object(self):
-        self._eat('{'); self._skip()
-        obj = {}
-        if self._char() != '}':
-            self._skip(); key = self._string(); self._skip()
-            self._eat(':'); obj[key] = self._value(); self._skip()
-            while self._char() == ',':
-                self.pos += 1; self._skip()
-                key = self._string(); self._skip()
-                self._eat(':'); obj[key] = self._value(); self._skip()
-        self._eat('}')
-        return obj
-
-def parse_json(text):
-    return JSONParser(text).parse()
-
+"""JSON parser from scratch (no json module)."""
+import sys
+def parse(s,i=0):
+    i=skip(s,i)
+    if s[i]=='"': return parse_string(s,i)
+    if s[i]=='{': return parse_object(s,i)
+    if s[i]=='[': return parse_array(s,i)
+    if s[i] in '-0123456789': return parse_number(s,i)
+    if s[i:i+4]=='true': return True,i+4
+    if s[i:i+5]=='false': return False,i+5
+    if s[i:i+4]=='null': return None,i+4
+    raise ValueError(f"Unexpected char at {i}: {s[i]}")
+def skip(s,i):
+    while i<len(s) and s[i] in ' \t\n\r': i+=1
+    return i
+def parse_string(s,i):
+    i+=1;start=i;result=[]
+    while s[i]!='"':
+        if s[i]=='\\':
+            i+=1;esc={'n':'\n','t':'\t','r':'\r','\\':'\\','"':'"','/':'/'}
+            if s[i] in esc: result.append(esc[s[i]])
+            elif s[i]=='u': result.append(chr(int(s[i+1:i+5],16)));i+=4
+            i+=1
+        else: result.append(s[i]);i+=1
+    return ''.join(result),i+1
+def parse_number(s,i):
+    start=i
+    if s[i]=='-': i+=1
+    while i<len(s) and s[i].isdigit(): i+=1
+    if i<len(s) and s[i]=='.':
+        i+=1
+        while i<len(s) and s[i].isdigit(): i+=1
+    if i<len(s) and s[i] in 'eE':
+        i+=1
+        if i<len(s) and s[i] in '+-': i+=1
+        while i<len(s) and s[i].isdigit(): i+=1
+    num=s[start:i]
+    return (float(num) if '.' in num or 'e' in num or 'E' in num else int(num)),i
+def parse_array(s,i):
+    i=skip(s,i+1);arr=[]
+    if s[i]==']': return arr,i+1
+    while True:
+        val,i=parse(s,i);arr.append(val);i=skip(s,i)
+        if s[i]==']': return arr,i+1
+        i=skip(s,i+1)
+def parse_object(s,i):
+    i=skip(s,i+1);obj={}
+    if s[i]=='}': return obj,i+1
+    while True:
+        i=skip(s,i);key,i=parse_string(s,i);i=skip(s,i)
+        i=skip(s,i+1);val,i=parse(s,i);obj[key]=val;i=skip(s,i)
+        if s[i]=='}': return obj,i+1
+        i=skip(s,i+1)
 def main():
-    tests = [
-        '{"name": "Rogue", "age": 1, "skills": ["Python", "Rust"], "meta": null}',
-        '[1, 2.5, -3, 1e10, true, false, null]',
-        '{"nested": {"deep": {"value": 42}}, "unicode": "Hello \\u0041"}',
-    ]
-    for t in tests:
-        result = parse_json(t)
-        print(f"Input:  {t[:60]}...")
-        print(f"Parsed: {result}\n")
-
-if __name__ == "__main__":
-    main()
+    if "--demo" in sys.argv:
+        tests=['{"name":"Alice","age":30,"scores":[95,87.5],"active":true,"addr":null}',
+               '[1, 2, [3, 4], {"a": "b"}]','42','"hello\\nworld"']
+        for t in tests:
+            result,_=parse(t);print(f"{t[:50]}... → {result}")
+    else:
+        data=sys.stdin.read();result,_=parse(data);print(result)
+if __name__=="__main__": main()
