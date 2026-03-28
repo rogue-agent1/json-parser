@@ -1,63 +1,54 @@
 #!/usr/bin/env python3
-"""JSON parser from scratch (no json module)."""
+"""json_parser - Recursive descent JSON parser."""
 import sys
-def parse(s,i=0):
-    i=skip(s,i)
-    if s[i]=='"': return parse_string(s,i)
-    if s[i]=='{': return parse_object(s,i)
-    if s[i]=='[': return parse_array(s,i)
-    if s[i] in '-0123456789': return parse_number(s,i)
-    if s[i:i+4]=='true': return True,i+4
-    if s[i:i+5]=='false': return False,i+5
-    if s[i:i+4]=='null': return None,i+4
-    raise ValueError(f"Unexpected char at {i}: {s[i]}")
-def skip(s,i):
-    while i<len(s) and s[i] in ' \t\n\r': i+=1
-    return i
-def parse_string(s,i):
-    i+=1;start=i;result=[]
-    while s[i]!='"':
-        if s[i]=='\\':
-            i+=1;esc={'n':'\n','t':'\t','r':'\r','\\':'\\','"':'"','/':'/'}
-            if s[i] in esc: result.append(esc[s[i]])
-            elif s[i]=='u': result.append(chr(int(s[i+1:i+5],16)));i+=4
-            i+=1
-        else: result.append(s[i]);i+=1
-    return ''.join(result),i+1
-def parse_number(s,i):
-    start=i
-    if s[i]=='-': i+=1
-    while i<len(s) and s[i].isdigit(): i+=1
-    if i<len(s) and s[i]=='.':
-        i+=1
-        while i<len(s) and s[i].isdigit(): i+=1
-    if i<len(s) and s[i] in 'eE':
-        i+=1
-        if i<len(s) and s[i] in '+-': i+=1
-        while i<len(s) and s[i].isdigit(): i+=1
-    num=s[start:i]
-    return (float(num) if '.' in num or 'e' in num or 'E' in num else int(num)),i
-def parse_array(s,i):
-    i=skip(s,i+1);arr=[]
-    if s[i]==']': return arr,i+1
-    while True:
-        val,i=parse(s,i);arr.append(val);i=skip(s,i)
-        if s[i]==']': return arr,i+1
-        i=skip(s,i+1)
-def parse_object(s,i):
-    i=skip(s,i+1);obj={}
-    if s[i]=='}': return obj,i+1
-    while True:
-        i=skip(s,i);key,i=parse_string(s,i);i=skip(s,i)
-        i=skip(s,i+1);val,i=parse(s,i);obj[key]=val;i=skip(s,i)
-        if s[i]=='}': return obj,i+1
-        i=skip(s,i+1)
-def main():
-    if "--demo" in sys.argv:
-        tests=['{"name":"Alice","age":30,"scores":[95,87.5],"active":true,"addr":null}',
-               '[1, 2, [3, 4], {"a": "b"}]','42','"hello\\nworld"']
-        for t in tests:
-            result,_=parse(t);print(f"{t[:50]}... → {result}")
-    else:
-        data=sys.stdin.read();result,_=parse(data);print(result)
-if __name__=="__main__": main()
+class JSONParser:
+    def __init__(s,text):s.text=text;s.pos=0
+    def parse(s):val=s._value();s._ws();return val
+    def _ws(s):
+        while s.pos<len(s.text) and s.text[s.pos] in " \t\n\r":s.pos+=1
+    def _value(s):
+        s._ws()
+        if s.pos>=len(s.text):raise ValueError("Unexpected EOF")
+        c=s.text[s.pos]
+        if c=='"':return s._string()
+        if c=='{':return s._object()
+        if c=='[':return s._array()
+        if c in'-0123456789':return s._number()
+        if s.text[s.pos:s.pos+4]=="true":s.pos+=4;return True
+        if s.text[s.pos:s.pos+5]=="false":s.pos+=5;return False
+        if s.text[s.pos:s.pos+4]=="null":s.pos+=4;return None
+        raise ValueError(f"Unexpected char: {c}")
+    def _string(s):
+        s.pos+=1;result=""
+        while s.text[s.pos]!='"':
+            if s.text[s.pos]=='\\':
+                s.pos+=1;esc={"n":"\n","t":"\t","r":"\r","\\":"\\",'"':'"',"/":"/"}.get(s.text[s.pos],s.text[s.pos])
+                result+=esc
+            else:result+=s.text[s.pos]
+            s.pos+=1
+        s.pos+=1;return result
+    def _number(s):
+        start=s.pos
+        if s.text[s.pos]=='-':s.pos+=1
+        while s.pos<len(s.text) and s.text[s.pos].isdigit():s.pos+=1
+        if s.pos<len(s.text) and s.text[s.pos]=='.':
+            s.pos+=1
+            while s.pos<len(s.text) and s.text[s.pos].isdigit():s.pos+=1
+        num=s.text[start:s.pos]
+        return float(num) if '.' in num else int(num)
+    def _array(s):
+        s.pos+=1;s._ws();result=[]
+        if s.text[s.pos]==']':s.pos+=1;return result
+        result.append(s._value())
+        while s._ws() or s.text[s.pos]==',':s.pos+=1;result.append(s._value())
+        s.pos+=1;return result
+    def _object(s):
+        s.pos+=1;s._ws();result={}
+        if s.text[s.pos]=='}':s.pos+=1;return result
+        key=s._string();s._ws();s.pos+=1;result[key]=s._value()
+        while s._ws() or s.text[s.pos]==',':s.pos+=1;s._ws();key=s._string();s._ws();s.pos+=1;result[key]=s._value()
+        s._ws();s.pos+=1;return result
+if __name__=="__main__":
+    tests=['{"name":"Alice","age":30,"scores":[95,87,92]}','[1,2,3,true,null,"hello"]','{"nested":{"a":{"b":1}}}']
+    for t in tests:
+        result=JSONParser(t).parse();print(f"  {t[:50]:50s} => {result}")
