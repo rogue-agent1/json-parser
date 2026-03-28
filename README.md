@@ -1,11 +1,13 @@
-# json-parser
+# Json Parser
 
-Recursive descent JSON parser.""".
-
-Zero dependencies. Python 3.8+.
+Pure Python JSON parser (no json module).
 
 ## Usage
 
 ```bash
-python3 json_parser.py --help
+python3 json_parser.py
 ```
+
+## License
+
+MIT
