@@ -1,11 +1,11 @@
-# Json Parser
+# JSON Parser from Scratch
 
-Pure Python JSON parser (no json module).
+JSON Parser from Scratch — zero-dependency, single-file Python CLI.
 
 ## Usage
 
 ```bash
-python3 json_parser.py
+python3 json_parser.py --help
 ```
 
 ## License
